@@ -1,8 +1,3 @@
-
-# This script is adapted from the LangChain package, developed by LangChain AI.
-# Original code can be found at: https://github.com/langchain-ai/langchain/blob/master/libs/text-splitters/langchain_text_splitters/base.py
-# License: MIT License
-
 from abc import ABC, abstractmethod
 from enum import Enum
 import logging
@@ -21,13 +16,13 @@ from typing import (
     Union,
 )
 from .base_chunker import BaseChunker
-
-
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from attr import dataclass
 
 logger = logging.getLogger(__name__)
 
 TS = TypeVar("TS", bound="TextSplitter")
+
 class TextSplitter(BaseChunker, ABC):
     """Interface for splitting text into chunks."""
 
@@ -118,115 +113,50 @@ class TextSplitter(BaseChunker, ABC):
             docs.append(doc)
         return docs
 
-    # @classmethod
-    # def from_huggingface_tokenizer(cls, tokenizer: Any, **kwargs: Any) -> TextSplitter:
-    #     """Text splitter that uses HuggingFace tokenizer to count length."""
-    #     try:
-    #         from transformers import PreTrainedTokenizerBase
-
-    #         if not isinstance(tokenizer, PreTrainedTokenizerBase):
-    #             raise ValueError(
-    #                 "Tokenizer received was not an instance of PreTrainedTokenizerBase"
-    #             )
-
-    #         def _huggingface_tokenizer_length(text: str) -> int:
-    #             return len(tokenizer.encode(text))
-
-    #     except ImportError:
-    #         raise ValueError(
-    #             "Could not import transformers python package. "
-    #             "Please install it with `pip install transformers`."
-    #         )
-    #     return cls(length_function=_huggingface_tokenizer_length, **kwargs)
-
     @classmethod
-    def from_tiktoken_encoder(
+    def from_gemini_encoder(
         cls: Type[TS],
-        encoding_name: str = "gpt2",
-        model_name: Optional[str] = None,
-        allowed_special: Union[Literal["all"], AbstractSet[str]] = set(),
-        disallowed_special: Union[Literal["all"], Collection[str]] = "all",
+        model_name: str = "models/embedding-001",
         **kwargs: Any,
     ) -> TS:
-        """Text splitter that uses tiktoken encoder to count length."""
-        try:
-            import tiktoken
-        except ImportError:
-            raise ImportError(
-                "Could not import tiktoken python package. "
-                "This is needed in order to calculate max_tokens_for_prompt. "
-                "Please install it with `pip install tiktoken`."
-            )
+        """Text splitter that uses Gemini encoder to count length."""
+        embedding_model = GoogleGenerativeAIEmbeddings(model=model_name)
 
-        if model_name is not None:
-            enc = tiktoken.encoding_for_model(model_name)
-        else:
-            enc = tiktoken.get_encoding(encoding_name)
-
-        def _tiktoken_encoder(text: str) -> int:
-            return len(
-                enc.encode(
-                    text,
-                    allowed_special=allowed_special,
-                    disallowed_special=disallowed_special,
-                )
-            )
+        def _gemini_encoder(text: str) -> int:
+            embedding = embedding_model.embed_documents([text])[0]
+            return len(embedding)
 
         if issubclass(cls, FixedTokenChunker):
             extra_kwargs = {
-                "encoding_name": encoding_name,
                 "model_name": model_name,
-                "allowed_special": allowed_special,
-                "disallowed_special": disallowed_special,
             }
             kwargs = {**kwargs, **extra_kwargs}
 
-        return cls(length_function=_tiktoken_encoder, **kwargs)
-    
+        return cls(length_function=_gemini_encoder, **kwargs)
+
 class FixedTokenChunker(TextSplitter):
-    """Splitting text to tokens using model tokenizer."""
+    """Splitting text to tokens using Gemini embeddings."""
 
     def __init__(
         self,
-        encoding_name: str = "cl100k_base",
-        model_name: Optional[str] = None,
+        model_name: str = "models/embedding-001",
         chunk_size: int = 4000,
         chunk_overlap: int = 200,
-        allowed_special: Union[Literal["all"], AbstractSet[str]] = set(),
-        disallowed_special: Union[Literal["all"], Collection[str]] = "all",
         **kwargs: Any,
     ) -> None:
-        """Create a new TextSplitter."""
+        """Create a new FixedTokenChunker."""
         super().__init__(chunk_size=chunk_size, chunk_overlap=chunk_overlap, **kwargs)
-        try:
-            import tiktoken
-        except ImportError:
-            raise ImportError(
-                "Could not import tiktoken python package. "
-                "This is needed in order to for FixedTokenChunker. "
-                "Please install it with `pip install tiktoken`."
-            )
-
-        if model_name is not None:
-            enc = tiktoken.encoding_for_model(model_name)
-        else:
-            enc = tiktoken.get_encoding(encoding_name)
-        self._tokenizer = enc
-        self._allowed_special = allowed_special
-        self._disallowed_special = disallowed_special
+        self.embedding_model = GoogleGenerativeAIEmbeddings(model=model_name)
 
     def split_text(self, text: str) -> List[str]:
         def _encode(_text: str) -> List[int]:
-            return self._tokenizer.encode(
-                _text,
-                allowed_special=self._allowed_special,
-                disallowed_special=self._disallowed_special,
-            )
+            embedding = self.embedding_model.embed_documents([_text])[0]
+            return list(range(len(embedding)))  # Use the length of embedding as token ids
 
         tokenizer = Tokenizer(
             chunk_overlap=self._chunk_overlap,
             tokens_per_chunk=self._chunk_size,
-            decode=self._tokenizer.decode,
+            decode=lambda x: text,  # Placeholder for decoding
             encode=_encode,
         )
 
@@ -261,3 +191,4 @@ def split_text_on_tokens(*, text: str, tokenizer: Tokenizer) -> List[str]:
         cur_idx = min(start_idx + tokenizer.tokens_per_chunk, len(input_ids))
         chunk_ids = input_ids[start_idx:cur_idx]
     return splits
+

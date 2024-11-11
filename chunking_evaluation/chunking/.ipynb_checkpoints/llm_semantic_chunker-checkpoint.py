@@ -45,7 +45,7 @@ import anthropic
 import backoff
 # Setting up Google API credentials
 credentials = service_account.Credentials.from_service_account_file(
-    
+    'rbio-p-datasharing-b5c1d9a2deba.json'
 )
 aiplatform.init(credentials=credentials, project='rbio-p-datasharing')
 vertexai.init(project="rbio-p-datasharing", location="us-west1")

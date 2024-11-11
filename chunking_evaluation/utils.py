@@ -3,11 +3,47 @@ import re
 from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
 import os
-from chromadb.utils import embedding_functions
+from vertexai.preview.language_models import TextEmbeddingModel
+from google.auth import service_account
 import tiktoken
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from rich import print
+import vertexai
+from langchain.vectorstores import Chroma
+from langchain.embeddings.base import Embeddings
+from langchain.prompts import PromptTemplate
+from langchain_community.document_loaders import WebBaseLoader, UnstructuredPDFLoader
+from google.cloud import aiplatform
+from google.oauth2 import service_account
+import vertexai
+from vertexai.generative_models import GenerativeModel
+from rich import print
+from langchain.docstore.document import Document
+from langchain_community.vectorstores import Chroma
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from google.oauth2 import service_account
+from google.cloud import aiplatform
+import vertexai
+from vertexai.language_models import TextGenerationModel
+import os
+from typing import Optional, List
+from pydantic import BaseModel
+from langchain import hub
+import uuid
+from dotenv import load_dotenv
+from pydantic import BaseModel, Field
+from typing import List
+import numpy as np
+import json
+from vertexai.preview.tokenization import get_tokenizer_for_model
+# Set up Google API credentials
+credentials = service_account.Credentials.from_service_account_file(
+    'rbio-p-datasharing-b5c1d9a2deba.json'
+)
 
 def find_query_despite_whitespace(document, query):
-
     # Normalize spaces and newlines in the query
     normalized_query = re.sub(r'\s+', ' ', query).strip()
     
@@ -68,21 +104,16 @@ def rigorous_document_search(document: str, target: str):
 
     return reference, start_index, end_index
 
-def get_openai_embedding_function():
-    openai_api_key = os.getenv('OPENAI_API_KEY')
-    if openai_api_key is None:
-        raise ValueError("You need to set an embedding function or set an OPENAI_API_KEY environment variable.")
-    embedding_function = embedding_functions.OpenAIEmbeddingFunction(
-        api_key=os.getenv('OPENAI_API_KEY'),
-        model_name="text-embedding-3-large"
-    )
-    return embedding_function
+def get_gemini_embedding_function():
+    embedding_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    return embedding_model
 
 # Count the number of tokens in each page_content
-def openai_token_count(string: str) -> int:
+def gemini_token_count(string: str) -> int:
     """Returns the number of tokens in a text string."""
-    encoding = tiktoken.get_encoding("cl100k_base")
-    num_tokens = len(encoding.encode(string, disallowed_special=()))
+    encoding = get_tokenizer_for_model("gemini-1.5-flash-001")
+    #encoding = tiktoken.get_encoding("cl100k_base")
+    num_tokens = encoding.count_tokens(string).total_tokens
     return num_tokens
 
 class Language(str, Enum):
